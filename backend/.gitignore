@@ -10,6 +10,12 @@
 !.yarn/releases
 !.yarn/versions
 
+# Python virtual environments & cache
+/venv
+/.venv
+__pycache__/
+*.pyc
+
 # testing
 /coverage
 
@@ -39,3 +45,5 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/lib/generated/prisma
