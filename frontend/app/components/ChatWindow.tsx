@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, Send, Loader, Download, Eye, AlertCircle } from 'lucide-react';
+import { Upload, Send, Loader, Download, Eye, AlertCircle, X } from 'lucide-react';
 import { useMigrationStore, Message, MigrationChat } from '@/lib/store';
 import { addMessage } from '@/lib/firestore';
 import { checkBackendHealth, getBackendUrl } from '@/lib/backend';
@@ -17,6 +17,7 @@ export function ChatWindow({ chat }: ChatWindowProps) {
   const [loading, setLoading] = useState(false);
   const [backendAvailable, setBackendAvailable] = useState<boolean | null>(null);
   const [viewingResult, setViewingResult] = useState<any | null>(null);
+  const [inputMode, setInputMode] = useState<'file' | 'url'>('file'); // Toggle between file upload and URL input
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { addMessage: addMessageToStore } = useMigrationStore();
 
@@ -51,11 +52,14 @@ export function ChatWindow({ chat }: ChatWindowProps) {
     setLoading(true);
 
     try {
+      // Determine if we're processing a file or a URL
+      const isGitHubUrl = inputMode === 'url' && input.trim().includes('github.com');
+
       // Add user message
       const userMessage: Message = {
         id: Date.now().toString(),
         role: 'user',
-        content: input,
+        content: isGitHubUrl ? `GitHub Repository: ${input.trim()}` : input,
         timestamp: new Date(),
         file: file
           ? {
@@ -69,8 +73,64 @@ export function ChatWindow({ chat }: ChatWindowProps) {
       await addMessage(chat.id, userMessage);
       addMessageToStore(userMessage);
 
-      // Process migration if file is present
-      if (file) {
+      // Process migration
+      if (isGitHubUrl) {
+        // Handle GitHub URL
+        try {
+          const backendUrl = getBackendUrl();
+          console.log('Attempting to fetch from:', `${backendUrl}/migrate/url`);
+          
+          const response = await fetch(`${backendUrl}/migrate/url`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              source_url: input.trim(),
+              include_suggestions: false,
+            }),
+          });
+
+          if (!response.ok) {
+            let errorDetail = `${response.status} ${response.statusText}`;
+            try {
+              const errorData = await response.json();
+              errorDetail = errorData.detail || errorDetail;
+            } catch {
+              // Couldn't parse error response
+            }
+            throw new Error(`Backend error: ${errorDetail}`);
+          }
+
+          const result = await response.json();
+
+          // Add assistant response with migration results
+          const assistantMessage: Message = {
+            id: Date.now().toString(),
+            role: 'assistant',
+            content: `Migration completed successfully!\n\nWorkspace: ${result.workspace}\n\nReport:\n${result.report}`,
+            timestamp: new Date(),
+            migrationResult: result,
+          };
+
+          await addMessage(chat.id, assistantMessage);
+          addMessageToStore(assistantMessage);
+        } catch (fetchError) {
+          console.error('Backend fetch error:', fetchError);
+          const errorMsg = fetchError instanceof Error ? fetchError.message : 'Failed to connect to backend';
+          
+          // Add error message
+          const errorMessage: Message = {
+            id: Date.now().toString(),
+            role: 'assistant',
+            content: `❌ Migration Error: ${errorMsg}\n\n⚠️ The backend server doesn't seem to be running or the GitHub URL is invalid.\n\nTo fix this, open a terminal and run:\n\ncd backend\npython -m uvicorn server:app --reload\n\nMake sure the GitHub URL is valid and the repository is accessible.`,
+            timestamp: new Date(),
+          };
+          await addMessage(chat.id, errorMessage);
+          addMessageToStore(errorMessage);
+        }
+      } else if (file) {
+        // Handle file upload
         try {
           const formData = new FormData();
           formData.append('file', file);
@@ -124,11 +184,13 @@ export function ChatWindow({ chat }: ChatWindowProps) {
           addMessageToStore(errorMessage);
         }
       } else {
-        // No file, just acknowledge the message
+        // No file or URL
         const assistantMessage: Message = {
           id: Date.now().toString(),
           role: 'assistant',
-          content: 'Please upload a ZIP file to start the migration.',
+          content: inputMode === 'url' 
+            ? 'Please enter a valid GitHub repository URL' 
+            : 'Please upload a ZIP file to start the migration.',
           timestamp: new Date(),
         };
         await addMessage(chat.id, assistantMessage);
@@ -185,7 +247,7 @@ export function ChatWindow({ chat }: ChatWindowProps) {
                     <button 
                       onClick={() => {
                         const element = document.createElement('a');
-                        element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(message.migrationResult.report));
+                        element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(message.migrationResult?.report || ''));
                         element.setAttribute('download', 'migration-report.txt');
                         element.style.display = 'none';
                         document.body.appendChild(element);
@@ -198,7 +260,7 @@ export function ChatWindow({ chat }: ChatWindowProps) {
                       Download
                     </button>
                     <button 
-                      onClick={() => setViewingResult(message.migrationResult)}
+                      onClick={() => message.migrationResult && setViewingResult(message.migrationResult)}
                       className="bg-blue-700 hover:bg-blue-800 text-white text-xs px-2 py-1 rounded flex items-center gap-1"
                     >
                       <Eye size={12} />
@@ -260,24 +322,60 @@ export function ChatWindow({ chat }: ChatWindowProps) {
           </motion.div>
         )}
 
+        {/* Input Mode Tabs */}
+        <div className="mb-3 flex gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setInputMode('file');
+              setInput('');
+              setFile(null);
+            }}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              inputMode === 'file'
+                ? 'bg-blue-600 text-white'
+                : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+            }`}
+          >
+            📁 Upload ZIP
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setInputMode('url');
+              setInput('');
+              setFile(null);
+            }}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              inputMode === 'url'
+                ? 'bg-blue-600 text-white'
+                : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+            }`}
+          >
+            🔗 GitHub URL
+          </button>
+        </div>
+
         <form onSubmit={handleSendMessage} className="flex gap-2">
-          <label className="flex-shrink-0 cursor-pointer">
-            <input
-              type="file"
-              onChange={handleFileSelect}
-              accept=".zip,.rar,.7z"
-              className="hidden"
-            />
-            <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-slate-700 hover:bg-slate-600 transition-colors">
-              <Upload size={20} className="text-blue-400" />
-            </div>
-          </label>
+          {inputMode === 'file' && (
+            <label className="flex-shrink-0 cursor-pointer">
+              <input
+                type="file"
+                onChange={handleFileSelect}
+                accept=".zip,.rar,.7z"
+                className="hidden"
+              />
+              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-slate-700 hover:bg-slate-600 transition-colors">
+                <Upload size={20} className="text-blue-400" />
+              </div>
+            </label>
+          )}
 
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Describe your migration needs or upload a file..."
+            placeholder={inputMode === 'url' ? 'https://github.com/user/repo' : 'Describe your migration needs...'}
             className="flex-1 px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
             disabled={loading}
           />

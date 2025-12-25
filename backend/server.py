@@ -3,7 +3,7 @@ import os
 import shutil
 import tempfile
 import zipfile
-from fastapi import FastAPI, UploadFile, File, HTTPException,Request
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -32,16 +32,30 @@ def health_check():
 def get_pgs(request: Request):
     print(dict(request.query_params))
     return {"message": "testSer is running"}
+
 @app.post("/migrate/url")
 def migrate_url(request: MigrationRequest):
     """
     Migrate from a Git repository URL.
+    Accepts GitHub URLs (e.g., https://github.com/user/repo or https://github.com/user/repo.git)
     """
+    temp_dirs = []
     try:
+        # Validate URL format
+        if not request.source_url.startswith("http"):
+            raise ValueError("Invalid URL format. Must be a valid Git repository URL.")
+        
         result = migrate(request.source_url, include_suggestions=request.include_suggestions)
         return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Migration failed: {str(e)}")
+    finally:
+        # Cleanup any temporary directories created during migration
+        for temp_dir in temp_dirs:
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir, ignore_errors=True)
 
 @app.post("/migrate/file")
 async def migrate_file(file: UploadFile = File(...), include_suggestions: bool = False):
