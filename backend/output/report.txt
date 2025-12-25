@@ -1,0 +1,4 @@
+AZURE -> GCP MIGRATION REPORT
+==============================
+C:\Users\Amrit\AppData\Local\Temp\az2gcp_8yari4t4\azure.yaml: Converted
+C:\Users\Amrit\AppData\Local\Temp\az2gcp_8yari4t4\azure2.yaml: Converted
