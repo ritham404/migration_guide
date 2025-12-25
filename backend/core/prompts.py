@@ -12,6 +12,8 @@ def build_rewrite_prompt(filename, services):
     3. If direct translation is not possible, add a comment explaining why and suggest a workaround.
     4. Return ONLY the python code, no markdown backticks or explanations outside comments.
     5. Handle authentication: assume Default Credentials or standard client initialization.
+    6. If a file is not translatable, respond with a comment block explaining why.
+
     
     Output the full converted code:
     """

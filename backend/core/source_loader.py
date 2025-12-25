@@ -10,19 +10,7 @@ IGNORED_DIRS = {
 }
 
 def load_source(source: str) -> str:
-    """
-    Returns a local workspace directory.
-    
-    Args:
-        source: Either a path to a ZIP file or a Git repository URL
-        
-    Returns:
-        Path to the workspace directory containing extracted/cloned source code
-        
-    Raises:
-        ValueError: If source format is invalid
-        GitCommandError: If Git clone fails
-    """
+
     workspace = tempfile.mkdtemp(prefix="az2gcp_")
 
     try:

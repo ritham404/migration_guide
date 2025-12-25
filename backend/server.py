@@ -30,7 +30,7 @@ def health_check():
 
 @app.get("/pgs")
 def get_pgs(request: Request):
-    print(dict(request.query_params))
+    # print(dict(request.query_params))
     return {"message": "testSer is running"}
 
 @app.post("/migrate/url")
